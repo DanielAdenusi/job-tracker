@@ -1,15 +1,15 @@
-import { loginWithGoogle } from "../features/auth/authService";
+import { signUpWithGoogle } from "../../services/authenticationApi";
 
-type LoginPageProps = {
+type SignUpPageProps = {
 	error?: string;
 };
 
-export default function LoginPage({ error }: LoginPageProps) {
-	async function handleLogin() {
+export function SignUpPage({ error }: SignUpPageProps) {
+	async function handleSignUp() {
 		try {
-			await loginWithGoogle();
+			await signUpWithGoogle();
 		} catch (error) {
-			console.error("Login failed:", error);
+			console.error("Sign Up failed:", error);
 		}
 	}
 
@@ -27,7 +27,7 @@ export default function LoginPage({ error }: LoginPageProps) {
 
 				{error && <p className="errorText">{error}</p>}
 
-				<button className="primaryButton" onClick={handleLogin}>
+				<button className="primaryButton" onClick={handleSignUp}>
 					Continue with Google
 				</button>
 			</section>

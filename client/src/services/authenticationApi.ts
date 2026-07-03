@@ -6,6 +6,7 @@ import {
 	signInWithPopup,
 	signInWithRedirect,
 	signOut,
+	getRedirectResult,
 	onAuthStateChanged,
 	verifyPasswordResetCode,
 	type User,
@@ -17,7 +18,10 @@ function isPopupBlockedError(error: unknown) {
 	return (
 		error instanceof Error &&
 		"code" in error &&
-		String(error.code) === "auth/popup-blocked"
+		[
+			"auth/popup-blocked",
+			"auth/operation-not-supported-in-this-environment",
+		].includes(String(error.code))
 	);
 }
 
@@ -33,6 +37,11 @@ export async function loginWithGoogle() {
 
 		throw error;
 	}
+}
+
+export async function completeGoogleRedirectLogin() {
+	const result = await getRedirectResult(auth);
+	return result?.user ?? null;
 }
 
 export async function loginWithEmail(email: string, password: string) {

@@ -8,6 +8,7 @@ import {
 } from "react";
 import { type User } from "firebase/auth";
 import {
+	completeGoogleRedirectLogin,
 	listenToAuthChanges,
 	loginWithEmail,
 	loginWithGoogle,
@@ -37,6 +38,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
 	const [isAuthLoading, setIsAuthLoading] = useState(true);
 
 	useEffect(() => {
+		void completeGoogleRedirectLogin();
+
 		const unsubscribe = listenToAuthChanges((firebaseUser) => {
 			setUser(firebaseUser);
 			setIsAuthLoading(false);

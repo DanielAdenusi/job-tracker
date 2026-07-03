@@ -102,7 +102,6 @@ export function SignUpPage() {
 			setError(null);
 			setIsSigningInWithGoogle(true);
 			await loginWithGoogle();
-			navigate(redirectTo, { replace: true });
 		} catch (err) {
 			const message = getAuthErrorMessage(
 				err,

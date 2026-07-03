@@ -72,7 +72,6 @@ export function LoginPage() {
 			setError(null);
 			setIsSigningInWithGoogle(true);
 			await loginWithGoogle();
-			navigate(redirectTo, { replace: true });
 		} catch (err) {
 			setError(getAuthErrorMessage(err, "Failed to sign in."));
 			showToast(getAuthErrorMessage(err, "Failed to sign in."), "error");

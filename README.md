@@ -408,12 +408,17 @@ Use this checklist after changes:
 
 ## Screenshots
 
-```md
-![Dashboard](./screenshots/dashboard.png)
-![Applications](./screenshots/applications.png)
-![Kanban](./screenshots/kanban.png)
-![Application Form](./screenshots/application-form.png)
-```
+#### Dashboard
+![Dashboard](screenshots/dashboard.png)
+
+#### Applications
+![Applications](screenshots/applications.png)
+
+#### Kanban
+![Kanban](screenshots/kanban.png)
+
+#### Application Form
+![Application Form](screenshots/application-form.png)
 
 ## Deployment Notes
 

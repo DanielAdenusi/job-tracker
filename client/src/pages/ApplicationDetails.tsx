@@ -261,16 +261,18 @@ function ApplicationDetailsSkeleton() {
 			className="grid min-w-0 max-w-full gap-5 overflow-x-hidden"
 			aria-label="Loading application details"
 		>
-			<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-				<div className="flex items-center gap-2">
-					<SkeletonBlock className="h-8 w-8" />
-					<SkeletonBlock className="h-4 w-36" />
-				</div>
-				<SkeletonBlock className="h-4 w-28" />
-			</div>
+			<article className="application-detail-panel relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/50">
+				<SkeletonBlock className="absolute inset-x-0 top-0 h-1.5 rounded-none" />
 
-			<article className="rounded-xl border border-slate-200 bg-white px-5 py-6 shadow-sm shadow-slate-200/50 sm:px-8 sm:py-9">
-				<div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+				<div className="flex flex-col gap-3 border-b border-slate-100 px-5 pb-4 pt-6 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+					<div className="flex items-center gap-2">
+						<SkeletonBlock className="h-8 w-8" />
+						<SkeletonBlock className="h-4 w-36" />
+					</div>
+					<SkeletonBlock className="h-4 w-28" />
+				</div>
+
+				<div className="flex flex-col gap-6 px-5 py-6 sm:px-8 sm:py-7 lg:flex-row lg:items-center lg:justify-between">
 					<div className="flex min-w-0 items-start gap-4 sm:items-center">
 						<SkeletonBlock className="h-14 w-14 shrink-0 rounded-2xl" />
 						<div className="min-w-0">
@@ -292,7 +294,13 @@ function ApplicationDetailsSkeleton() {
 					</div>
 				</div>
 
-				<SkeletonBlock className="mt-7 h-1.5 w-full" />
+				<div className="px-5 pb-6 sm:px-8 sm:pb-7">
+					<SkeletonBlock className="h-1.5 w-full" />
+					<div className="mt-2 flex items-center justify-between">
+						<SkeletonBlock className="h-3 w-20" />
+						<SkeletonBlock className="h-3 w-24" />
+					</div>
+				</div>
 			</article>
 
 			<div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">

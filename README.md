@@ -97,7 +97,7 @@ job-tracking-app/
 
 ## Environment Variables
 
-Create `client/.env` from `client/.env.example`:
+Create `client/.env` from `client/.env.example`. For local development, set the API URL to the local server:
 
 ```env
 VITE_API_URL=http://localhost:5000/api
@@ -112,7 +112,7 @@ VITE_FIREBASE_STORAGE_BUCKET=optional_storage_bucket
 VITE_FIREBASE_MESSAGING_SENDER_ID=optional_sender_id
 ```
 
-Create `server/.env` from `server/.env.example`:
+Create `server/.env` from `server/.env.example`. For local development, set the client URL to the local Vite app:
 
 ```env
 PORT=5000
@@ -219,6 +219,9 @@ Public routes:
 /
 /help
 /contact
+/terms
+/privacy
+/cookies
 /login
 /signup
 /forgot-password
@@ -385,7 +388,7 @@ onsite
 Use this checklist after changes:
 
 1. Visit `/` and check the public marketing page.
-2. Visit `/help` and `/contact`.
+2. Visit `/help`, `/contact`, `/terms`, `/privacy`, and `/cookies`.
 3. Visit `/dashboard` while signed out and confirm it redirects to `/login`.
 4. Sign up with email/password and confirm Firebase sends verification.
 5. Sign out and sign in with email/password.

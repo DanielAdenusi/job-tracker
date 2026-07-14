@@ -12,6 +12,9 @@ const sourceLabels = new Map([
 	["workdayjobs.com", "Workday"],
 	["greenhouse.io", "Greenhouse"],
 	["lever.co", "Lever"],
+	["bendingspoons.com", "Bending Spoons"],
+	["joinrs.com", "Joinrs"],
+	["haystack.cv", "Haystack"],
 ]);
 
 function cleanText(value) {
@@ -71,6 +74,33 @@ function parseJsonLdBlocks(html) {
 			blocks.push(JSON.parse(content));
 		} catch {
 			// Some job boards ship malformed JSON-LD. Ignore and use meta tags.
+		}
+	}
+
+	const scriptPattern = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
+	while ((match = scriptPattern.exec(html))) {
+		const scriptContent = match[1];
+		const stringPattern = /"((?:\\.|[^"\\])*)"/g;
+		let stringMatch;
+
+		while ((stringMatch = stringPattern.exec(scriptContent))) {
+			const rawString = stringMatch[1];
+			if (
+				!rawString.includes("@type") &&
+				!rawString.includes("\\\"@type\\\"")
+			) {
+				continue;
+			}
+
+			try {
+				const decoded = JSON.parse(`"${rawString}"`);
+				if (!decoded.includes("JobPosting")) continue;
+
+				blocks.push(JSON.parse(decoded));
+			} catch {
+				// Some frameworks stream JSON-LD as escaped strings. Ignore
+				// strings that are not complete JSON objects.
+			}
 		}
 	}
 
@@ -188,19 +218,24 @@ function inferWorkMode(jobPosting, text) {
 
 function formatLocation(jobPosting) {
 	const locations = normalizeArray(jobPosting?.jobLocation);
-	const firstLocation = locations[0];
-	const address = firstLocation?.address || firstLocation;
+	const locationTexts = locations
+		.map((location) => {
+			const address = location?.address || location;
 
-	return firstText(
-		[
-			address?.addressLocality,
-			address?.addressRegion,
-			address?.addressCountry?.name || address?.addressCountry,
-		]
-			.filter(Boolean)
-			.join(", "),
-		firstLocation?.name,
-	);
+			return firstText(
+				[
+					address?.addressLocality,
+					address?.addressRegion,
+					address?.addressCountry?.name || address?.addressCountry,
+				]
+					.filter(Boolean)
+					.join(", "),
+				location?.name,
+			);
+		})
+		.filter(Boolean);
+
+	return locationTexts.join(", ") || undefined;
 }
 
 function formatSalary(baseSalary) {
@@ -224,12 +259,27 @@ function formatSalary(baseSalary) {
 	return undefined;
 }
 
+function parseNextData(html) {
+	const match = html.match(
+		/<script\b[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i,
+	);
+
+	if (!match?.[1]) return undefined;
+
+	try {
+		return JSON.parse(match[1]);
+	} catch {
+		return undefined;
+	}
+}
+
 function normalizeSalaryText(value) {
 	const text = cleanText(value);
 	if (!text) return undefined;
 
 	return text
 		.replace(/\bper\s+(annum|year)\b/i, "per year")
+		.replace(/\bper\s+yearly\b/i, "per year")
 		.replace(/\/\s?(yr|year)\b/i, " per year")
 		.replace(/\/\s?(hr|hour)\b/i, " per hour")
 		.replace(/\bpa\b/i, "per year")
@@ -607,11 +657,153 @@ function buildJobDescription(description) {
 	return sections;
 }
 
-function normalizeExtractedApplication(url, html) {
+function joinTitledItems(items) {
+	return normalizeArray(items)
+		.map((item) => {
+			if (!item || typeof item !== "object") return cleanRichText(item);
+
+			return firstText(
+				[item.title, item.description].filter(Boolean).join(". "),
+				item.description,
+				item.title,
+			);
+		})
+		.filter(Boolean);
+}
+
+function extractBendingSpoonsFallback(html) {
+	const job = getNestedValue(parseNextData(html), [
+		"props",
+		"pageProps",
+		"job",
+	]);
+
+	if (!job || typeof job !== "object") return {};
+
+	const location = normalizeArray(job.officeLocations)
+		.map((office) => firstText(office?.title))
+		.filter(Boolean)
+		.join(", ");
+	const responsibilities = normalizeArray(job.responsibilities)
+		.map(cleanRichText)
+		.filter(Boolean);
+	const requirements = joinTitledItems(job.requirements);
+	const sellingPoints = joinTitledItems(job.sellingPoints);
+	const highLevelDescription = cleanRichText(job.highLevelDescription);
+	const combinedDescription = [
+		highLevelDescription,
+		...responsibilities,
+		...requirements,
+		...sellingPoints,
+	].join("\n");
+
+	return {
+		role: firstText(job.jobTitle),
+		company: "Bending Spoons",
+		location: firstText(location),
+		employmentType: normalizeEmploymentType(job.workSchedule),
+		workMode:
+			job.availableAsRemoteInDefaultCountries ||
+			normalizeArray(job.additionalRemoteWorkCountries).length > 0
+				? "remote"
+				: undefined,
+		salary: extractSalaryFromText(combinedDescription),
+		description: highLevelDescription,
+		jobDescription: {
+			role: highLevelDescription ? [highLevelDescription] : [],
+			keyResponsibilities: responsibilities,
+			lookingFor: requirements,
+			desirable: [],
+			whyJoinUs: sellingPoints,
+		},
+	};
+}
+
+function getLastPathSegment(url) {
+	return new URL(url).pathname.split("/").filter(Boolean).at(-1);
+}
+
+function formatHaystackSalary(job) {
+	const currency = job?.salary_currency || "GBP";
+	const period =
+		job?.salary_period === "yearly"
+			? " per year"
+			: job?.salary_period
+				? ` per ${job.salary_period}`
+				: "";
+
+	if (job?.salary_min && job?.salary_max) {
+		if (job.salary_min === job.salary_max) {
+			return `${currency} ${job.salary_min}${period}`;
+		}
+
+		return `${currency} ${job.salary_min} - ${job.salary_max}${period}`;
+	}
+
+	return normalizeSalaryText(job?.salary);
+}
+
+async function extractHaystackFallback(url) {
+	const jobId = getLastPathSegment(url);
+	if (!jobId) return {};
+
+	const supabaseUrl = "https://npcmxclsxverzegunyvg.supabase.co";
+	const anonKey =
+		"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wY214Y2xzeHZlcnplZ3VueXZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc2MjczMjgsImV4cCI6MjA4MzIwMzMyOH0.wORLeoovyiQOE83Oq-1xij8yfh3v3TzfYtq7GgUyKX4";
+	const requestUrl = new URL(`${supabaseUrl}/rest/v1/jobs`);
+	requestUrl.searchParams.set("id", `eq.${jobId}`);
+	requestUrl.searchParams.set(
+		"select",
+		"*,companies:company_id(name,slug,domain,logo_url,description)",
+	);
+
+	const response = await fetch(requestUrl, {
+		headers: {
+			apikey: anonKey,
+			Authorization: `Bearer ${anonKey}`,
+		},
+	});
+
+	if (!response.ok) return {};
+
+	const [job] = await response.json();
+	if (!job) return {};
+
+	const company = firstText(job.companies?.name, job.company);
+	const description = cleanRichText(job.description);
+
+	return {
+		company,
+		role: firstText(job.title),
+		location: firstText(
+			[job.city, job.state, job.country].filter(Boolean).join(", "),
+			job.work_mode,
+		),
+		salary: formatHaystackSalary(job),
+		employmentType: normalizeEmploymentType(
+			job.standardized_job_type || job.job_type,
+		),
+		workMode: inferWorkMode(undefined, `${job.work_mode} ${description}`),
+		description,
+		postedAt: firstText(job.posted_at, job.created_at)?.slice(0, 10),
+		jobReferenceId: firstText(job.source_job_id, job.appcast_job_id, job.id),
+		source: "Haystack",
+	};
+}
+
+async function extractExternalFallback(url, source) {
+	if (source === "Haystack") return extractHaystackFallback(url);
+
+	return {};
+}
+
+function normalizeExtractedApplication(url, html, externalFallback = {}) {
 	const parsedUrl = new URL(url);
 	const source = getHostnameLabel(parsedUrl.hostname);
 	const linkedinFallback =
 		source === "LinkedIn" ? extractLinkedInFallback(html) : {};
+	const bendingSpoonsFallback =
+		source === "Bending Spoons" ? extractBendingSpoonsFallback(html) : {};
 
 	const jsonLdItems = parseJsonLdBlocks(html).flatMap(flattenJsonLd);
 	const jobPosting = jsonLdItems.find(isJobPosting);
@@ -627,6 +819,8 @@ function normalizeExtractedApplication(url, html) {
 	const description = firstText(
 		jobPosting?.description,
 		linkedinFallback.description,
+		bendingSpoonsFallback.description,
+		externalFallback.description,
 		getMetaContent(html, "description"),
 		getMetaContent(html, "og:description"),
 	);
@@ -634,21 +828,38 @@ function normalizeExtractedApplication(url, html) {
 	const company = firstText(
 		getNestedValue(jobPosting, ["hiringOrganization", "name"]),
 		linkedinFallback.company,
+		bendingSpoonsFallback.company,
+		externalFallback.company,
 		titleParts.company,
 	);
 
-	const role = firstText(jobPosting?.title, linkedinFallback.role, titleParts.role);
+	const role = firstText(
+		jobPosting?.title,
+		linkedinFallback.role,
+		bendingSpoonsFallback.role,
+		externalFallback.role,
+		titleParts.role,
+	);
 
 	return {
 		company,
 		role,
-		location: firstText(formatLocation(jobPosting), linkedinFallback.location),
+		location: firstText(
+			formatLocation(jobPosting),
+			linkedinFallback.location,
+			bendingSpoonsFallback.location,
+			externalFallback.location,
+		),
 		jobUrl: url,
 		jobReferenceId:
-			source === "LinkedIn" ? extractLinkedInJobId(url) : undefined,
+			source === "LinkedIn"
+				? extractLinkedInJobId(url)
+				: externalFallback.jobReferenceId,
 		salary: firstText(
 			formatSalary(jobPosting?.baseSalary),
 			linkedinFallback.salary,
+			bendingSpoonsFallback.salary,
+			externalFallback.salary,
 			extractSalaryFromText(description),
 		),
 		status: "saved",
@@ -656,11 +867,21 @@ function normalizeExtractedApplication(url, html) {
 		employmentType: firstText(
 			normalizeEmploymentType(jobPosting?.employmentType),
 			linkedinFallback.employmentType,
+			bendingSpoonsFallback.employmentType,
+			externalFallback.employmentType,
 		),
-		workMode: inferWorkMode(jobPosting, `${metaTitle} ${description}`),
-		source,
-		jobDescription: buildJobDescription(description),
-		postedAt: firstText(jobPosting?.datePosted)?.slice(0, 10),
+		workMode: firstText(
+			bendingSpoonsFallback.workMode,
+			externalFallback.workMode,
+			inferWorkMode(jobPosting, `${metaTitle} ${description}`),
+		),
+		source: externalFallback.source || source,
+		jobDescription:
+			bendingSpoonsFallback.jobDescription ||
+			buildJobDescription(description),
+		postedAt:
+			firstText(jobPosting?.datePosted)?.slice(0, 10) ||
+			externalFallback.postedAt,
 		deadlineAt: firstText(jobPosting?.validThrough)?.slice(0, 10),
 	};
 }
@@ -737,11 +958,11 @@ export async function extractApplicationFromUrl(url, { status = "saved" } = {}) 
 			throw error;
 		}
 
+		const finalUrl = response.url || parsedUrl.toString();
+		const source = getHostnameLabel(new URL(finalUrl).hostname);
+		const externalFallback = await extractExternalFallback(finalUrl, source);
 		const application = removeEmptyFields(
-			normalizeExtractedApplication(
-				response.url || parsedUrl.toString(),
-				html,
-			),
+			normalizeExtractedApplication(finalUrl, html, externalFallback),
 		);
 		application.status = status;
 
